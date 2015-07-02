@@ -55,14 +55,21 @@ function add_experiments_to_db(start_time, parameters)
     end
     
     if size(s,1)==2
-        % now it is the time to send everything to the DB but before doing
-        % so, we might need to add one more stimulus
+        % now it is the time to send everything to the DB 
         prompt = {'Your db name (do not use root)', 'password'};
         default = {'', 'ganglion'};
         user = '';
         while 1
             while strcmp(user, 'root') || strcmp(user, '')
                 input = inputdlg(prompt, 'DB info', 1, default);
+                
+                if isempty(input)
+                    % user pressed cancel, probably doesn't want to send exp to DB
+                    % database connection will fail bellow and will get
+                    % prompted whether to quit for real
+                    password = '-1';
+                    break;
+                end
                 user = input{1};
                 password = input{2};
             end
@@ -72,8 +79,8 @@ function add_experiments_to_db(start_time, parameters)
             conn = database(dbname, user, password, 'Vendor', 'MySQL');
             
             % if connection failed, ask whether to try again
-            msg = get(conn, 'Message');
-            if isempty(msg)
+            if isconnection(conn)
+                % get out of this forever loop and write data to DB
                 break
             else
                 answer = questdlg('Couldn''t connect to db. Do you want to try again?', ...
@@ -81,7 +88,9 @@ function add_experiments_to_db(start_time, parameters)
             end
             
             if strcmp(answer, 'No')
-                break
+                % clean experiments_list and return
+                clear experiments_list
+                return
             else
                 user = '';
                 password = '';
@@ -90,6 +99,11 @@ function add_experiments_to_db(start_time, parameters)
         for i=1:length(experiments_list)
             add_experiment_to_db(conn, experiments_list{i})
         end
+        
+        clear experiments_list
+
+        % Update monitor configuration if needed
+        add_monitor_settings(conn);
 
         close(conn);
     end        
@@ -175,5 +189,28 @@ function params = parameters_to_text(parameters)
             params = [params, ', '];
         end
         
+    end
+end
+
+function add_monitor_settings(conn)
+    % pull the last monitor settings from the DB and if either nominal rate
+    % or resolution changed, update the DB
+    cur = exec(conn, 'SELECT width, height, nominal_rate, pixel_size FROM monitor ORDER BY date DESC;');
+    data = fetch(cur, 1);
+    width = data.Data{1};
+    height = data.Data{2};
+    nominal_rate = data.Data{3};
+    pixel_size = data.Data{4};
+    
+    % get nominal rate
+    screen = max(Screen('Screens'));
+    new = Screen('Resolution', screen);
+    
+    if new.hz ~= nominal_rate || ...
+            new.width ~= width || ...
+            new.height ~= height || ...
+            new.pixelSize ~= pixel_size
+        insert(conn, 'monitor', {'width', 'height', 'pixel_size', 'nominal_rate'}, ...
+            {new.width, new.height, new.pixelSize, new.hz});
     end
 end
