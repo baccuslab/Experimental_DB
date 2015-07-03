@@ -4,18 +4,12 @@ Interaction with Experimental DB
 import pymysql.cursors
 
 class DB(object):
-    def __init__(self, db, user, passwd, host='localhost'):
-        self.db = db
-        self.user = user
-        self.passwd = passwd
-        self.host = host
-
-    def connect(self):
+    def connect(self, db, user, passwd, host='localhost'):
         self.connection = pymysql.connect(
-                db = self.db,
-                user = self.user,
-                passwd = self.passwd,
-                host = self.host,
+                db = db,
+                user = user,
+                passwd = passwd,
+                host = host,
                 cursorclass = pymysql.cursors.DictCursor     # returns searchs as key/value pairs
                 )
 
