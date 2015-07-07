@@ -56,7 +56,7 @@ function add_experiments_to_db(start_time, parameters)
     
     if size(s,1)==2
         % now it is the time to send everything to the DB 
-        valid_species = ['M', 'S', 'R'];
+        valid_species = ['M', 'S', 'R', 'K'];
         prompt = {'Your db name (do not use root)', ...
             'password', ...
             'species M(ouse), R(at), S(alamander)',...
@@ -87,7 +87,7 @@ function add_experiments_to_db(start_time, parameters)
                 end
                 
                 if ~any(species==valid_species)
-                    questdlg('species has to be ''M(ouse)'', ''S(alamander)'' or ''R(at)''', 'Wrong Input', 'OK','OK')
+                    questdlg('species has to be ''M(ouse)'', ''S(alamander)'', ''R(at)'' or ''Monkey''', 'Wrong Input', 'OK','OK')
                     msgbox();
                     good_input = false;
                 end
@@ -132,9 +132,6 @@ function add_experiments_to_db(start_time, parameters)
         
         clear experiments_list
 
-        % Update monitor configuration if needed
-        add_monitor_settings(conn);
-
         close(conn);
     end        
 end
@@ -150,6 +147,9 @@ function add_experiment_to_db(conn, db_params, species, retina)
     % 2. When the user is running an experiment that is not included in the
     % db, in that case stimulus_id is -1
     %
+    % This function will get 'Resolution' from  screen and add the
+    % corresponding index from 'screen' table. If the 'Resolution' is not
+    % present in 'screen' table it will be added
     % parameters:
     %   conn = database('db_name','user','password','Vendor','MySQL');
     %
@@ -173,6 +173,8 @@ function add_experiment_to_db(conn, db_params, species, retina)
     
     stimulus_id = get_stimulus_id(conn, stimulus);
     
+    screen_id = get_screen_id(conn);
+    
     user = get(conn, 'UserName');
 
     date = datestr(today, 'yyyy-mm-dd');
@@ -189,9 +191,9 @@ function add_experiment_to_db(conn, db_params, species, retina)
     
 
     columns = {'stimulus_id', 'user', 'date', 'start_time', 'end_time', ...
-        'species', 'retina', 'params'};
+        'species', 'retina', 'params', 'screen_id'};
     values = {stimulus_id, user, date, start_time, end_time, ...
-        species, retina, params};
+        species, retina, params, screen_id};
 
     insert(conn, 'experiments', columns, values)
 end
@@ -228,25 +230,27 @@ function params = parameters_to_text(parameters)
     end
 end
 
-function add_monitor_settings(conn)
-    % pull the last monitor settings from the DB and if either nominal rate
-    % or resolution changed, update the DB
-    cur = exec(conn, 'SELECT width, height, nominal_rate, pixel_size FROM monitor ORDER BY date DESC;');
+function id = get_screen_id(conn)
+    % Pull the screen_id corresponding to current monitor settings from the
+    % 'screen' table. If this resolution is not present, add it.
+    current = Screen('Resolution', max(Screen('Screens')));
+    mysql = sprintf('SELECT id FROM screen WHERE width=%d and height=%d and pixel_size=%d and nominal_rate=%d', ...
+        current(1).width, current(1).height, current(1).pixelSize, current(1).hz);
+    cur = exec(conn, mysql);
     data = fetch(cur, 1);
-    width = data.Data{1};
-    height = data.Data{2};
-    nominal_rate = data.Data{3};
-    pixel_size = data.Data{4};
+
+    if strcmp('No Data', data.Data)
+        % add this screen setup to DB
+        columns = {'width', 'height', 'pixel_size', 'nominal_rate'};
+        values = {current(1).width, current(1).height, current(1).pixelSize, current(1).hz};
+        insert(conn, 'screen', columns, values);
+        
+        % grab the id just given to this setup
+        cur = exec(conn, mysql);
+        data = fetch(cur, 1);
+        
+    end
     
     % get nominal rate
-    screen = max(Screen('Screens'));
-    new = Screen('Resolution', screen);
-    
-    if new.hz ~= nominal_rate || ...
-            new.width ~= width || ...
-            new.height ~= height || ...
-            new.pixelSize ~= pixel_size
-        insert(conn, 'monitor', {'width', 'height', 'pixel_size', 'nominal_rate'}, ...
-            {new.width, new.height, new.pixelSize, new.hz});
-    end
+    id = data.data{1};
 end
