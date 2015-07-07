@@ -36,7 +36,7 @@ function add_experiments_to_db(start_time, parameters)
     % When calling add_experiment_to_db it will get parameter 'stimulus' from
     % the dbstack (function that called add_experiments_to_db) and 
     % 'end_time' from now().
-    global experiments_list
+    global experiments_list screen
 
     if ~(nargin==0 || nargin==2)
         error('add_experiments_to_db should be called with 0 or 2 parameters');
@@ -56,6 +56,8 @@ function add_experiments_to_db(start_time, parameters)
     
     if size(s,1)==2
         % now it is the time to send everything to the DB 
+        Screen('CloseAll');
+        
         valid_species = ['M', 'S', 'R', 'K'];
         prompt = {'Your db name (do not use root)', ...
             'password', ...
