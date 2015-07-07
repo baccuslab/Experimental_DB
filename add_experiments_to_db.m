@@ -56,12 +56,17 @@ function add_experiments_to_db(start_time, parameters)
     
     if size(s,1)==2
         % now it is the time to send everything to the DB 
-        prompt = {'Your db name (do not use root)', 'password'};
-        default = {'', 'ganglion'};
+        valid_species = ['M', 'S', 'R'];
+        prompt = {'Your db name (do not use root)', ...
+            'password', ...
+            'species M(ouse), R(at), S(alamander)',...
+            'Retina #'};
+        default = {'', 'ganglion', 'S', '1'};
         user = '';
-        while 1
-            while strcmp(user, 'root') || strcmp(user, '')
+        while 1         % checks that connection to DB was stablished.
+            while 1     %checks that parameters are correct
                 input = inputdlg(prompt, 'DB info', 1, default);
+                good_input = true;
                 
                 if isempty(input)
                     % user pressed cancel, probably doesn't want to send exp to DB
@@ -70,12 +75,35 @@ function add_experiments_to_db(start_time, parameters)
                     password = '-1';
                     break;
                 end
+                
                 user = input{1};
                 password = input{2};
+                species = input{3};
+                retina = str2double(input{4});
+
+                if strcmp(user, 'root') || strcmp(user, '')
+                    questdlg('user can''t be root nor empty', 'Wrong Input', 'OK','OK')
+                    good_input = false;
+                end
+                
+                if ~any(species==valid_species)
+                    questdlg('species has to be ''M(ouse)'', ''S(alamander)'' or ''R(at)''', 'Wrong Input', 'OK','OK')
+                    msgbox();
+                    good_input = false;
+                end
+                
+                if round(retina) ~= retina || retina==0
+                    questdlg('reinta has to be an integer number', 'Wrong Input', 'OK','OK')
+                    good_input = false;
+                end
+                
+                if good_input
+                    break
+                end
             end
             
-            dbname = 'test';
             % Try to connect to the db with the given name and password
+            dbname = 'test';
             conn = database(dbname, user, password, 'Vendor', 'MySQL');
             
             % if connection failed, ask whether to try again
@@ -84,7 +112,7 @@ function add_experiments_to_db(start_time, parameters)
                 break
             else
                 answer = questdlg('Couldn''t connect to db. Do you want to try again?', ...
-                    'Error connecting to DB', 'Yes', 'No', 'Yes')
+                    'Error connecting to DB', 'Yes', 'No', 'Yes');
             end
             
             if strcmp(answer, 'No')
@@ -96,8 +124,10 @@ function add_experiments_to_db(start_time, parameters)
                 password = '';
             end
         end
+        
+        % now we are connecting to the DB to add the experiment
         for i=1:length(experiments_list)
-            add_experiment_to_db(conn, experiments_list{i})
+            add_experiment_to_db(conn, experiments_list{i}, species, retina)
         end
         
         clear experiments_list
@@ -109,14 +139,14 @@ function add_experiments_to_db(start_time, parameters)
     end        
 end
 
-function add_experiment_to_db(conn, db_params)
+function add_experiment_to_db(conn, db_params, species, retina)
     % Add the given experiments with all associated parameters to the
     % database. 
     % 
     % Two different important cases should be handled
-    % 1. When the user is running an experiment that is used frequently (RF
-    % that is already in the db.stimuli table. In that case 'stim_id' is
-    % the 'stimuli' table id
+    % 1. When the user is running an experiment that is used frequently
+    % for example RF that is already in the db.stimuli table) In that case
+    % 'stim_id' is the 'stimuli' table id
     % 2. When the user is running an experiment that is not included in the
     % db, in that case stimulus_id is -1
     %
@@ -131,6 +161,10 @@ function add_experiment_to_db(conn, db_params)
     %       db_params{3}:   end_time = '17:03:04'
     %
     %       db_params{4}:   parameters:     a cell array
+    %
+    %   species/retina:     parameters to add to the DB but they don't come
+    %                       from the stiulus but from the dialog box at the
+    %                       end of the experiment
     
     stimulus = db_params{1};
     start_time = db_params{2};
@@ -154,8 +188,10 @@ function add_experiment_to_db(conn, db_params)
     end
     
 
-    columns = {'stimulus_id', 'user', 'date', 'start_time', 'end_time', 'params'};
-    values = {stimulus_id, user, date, start_time, end_time, params};
+    columns = {'stimulus_id', 'user', 'date', 'start_time', 'end_time', ...
+        'species', 'retina', 'params'};
+    values = {stimulus_id, user, date, start_time, end_time, ...
+        species, retina, params};
 
     insert(conn, 'experiments', columns, values)
 end
